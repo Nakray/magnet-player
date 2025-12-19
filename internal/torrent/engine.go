@@ -1,8 +1,6 @@
 package torrent
 
 import (
-	"time"
-
 	"github.com/anacrolix/torrent"
 )
 
@@ -38,7 +36,5 @@ func (e *Engine) AddMagnet(magnet string) (*torrent.Torrent, error) {
 	<-t.GotInfo()
 	t.DownloadAll()
 	t.SetMaxEstablishedConns(80)
-	t.SetMaxEstablishedConnsPerTorrent(40)
-	t.SetTimeout(0 * time.Second)
 	return t, nil
 }
