@@ -5,39 +5,46 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/Nakray/magnet-player/internal/config"
 	"github.com/Nakray/magnet-player/internal/httpserver"
 	"github.com/Nakray/magnet-player/internal/storage"
 	"github.com/Nakray/magnet-player/internal/torrent"
 )
 
 func main() {
-	// Конфиг бери из env для простоты
-	baseDir := getEnv("MP_BASE_DIR", "./data")
-	dbPath := getEnv("MP_DB_PATH", "./data/meta.db")
-	maxSizeGB := int64(10) // TODO: читать из env/флага
+	cfgPath := os.Getenv("MP_CONFIG")
+	if cfgPath == "" {
+		cfgPath = "./config.json"
+	}
 
-	if err := os.MkdirAll(baseDir, 0o755); err != nil {
+	cfg, err := config.LoadConfig(cfgPath)
+	if err != nil {
+		log.Fatalf("load config: %v", err)
+	}
+
+	if err := os.MkdirAll(cfg.Storage.BaseDir, 0o755); err != nil {
 		log.Fatalf("create base dir: %v", err)
 	}
 
-	// init storage (BoltDB + кеш)
-	metaDB, err := storage.NewMetadataDB(dbPath)
+	if err := os.MkdirAll(cfg.Storage.BaseDir, 0o755); err != nil {
+		log.Fatalf("create base dir: %v", err)
+	}
+
+	metaDB, err := storage.NewMetadataDB(cfg.Storage.DbPath)
 	if err != nil {
 		log.Fatalf("open metadata db: %v", err)
 	}
 	defer metaDB.Close()
 
-	cacheMgr := storage.NewCacheManager(maxSizeGB)
+	cacheMgr := storage.NewCacheManager(cfg.Storage.MaxSizeGB)
 	// TODO: восстановить состояние из metaDB, обновить cacheMgr.currentSize
 
-	// init torrent engine
-	engine, err := torrent.NewEngine(baseDir)
+	engine, err := torrent.NewEngine(cfg.Storage.BaseDir)
 	if err != nil {
 		log.Fatalf("init torrent engine: %v", err)
 	}
 	defer engine.Close()
 
-	// init HTTP router
 	router := httpserver.NewRouter(engine, cacheMgr, metaDB)
 
 	addr := ":8080"
