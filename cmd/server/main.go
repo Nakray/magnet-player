@@ -59,10 +59,3 @@ func main() {
 		log.Fatalf("server error: %v", err)
 	}
 }
-
-func getEnv(key, def string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return def
-}
