@@ -26,12 +26,16 @@ func NewCacheManager(maxSizeGB int64) *CacheManager {
 	if maxSizeGB <= 0 {
 		max = -1
 	} else {
-		max = maxSizeGB * 1024 * 1024 * 1024
+		max = maxSizeGB * (1 << 30) //10 GB
 	}
 	return &CacheManager{
 		maxSize: max,
 		files:   make(map[string]*FileMeta),
 	}
+}
+
+func (c *CacheManager) CurrentSize() int64 {
+	return c.currentSize
 }
 
 func (c *CacheManager) ReserveSpace(required int64) error {
@@ -81,5 +85,22 @@ func (c *CacheManager) Touch(hash string) {
 	defer c.mu.Unlock()
 	if m, ok := c.files[hash]; ok {
 		m.LastAccess = time.Now()
+	}
+}
+
+func (c *CacheManager) RestoreState(files []*FileMeta) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	for _, f := range files {
+		info, err := os.Stat(f.Path)
+		if err != nil {
+			// TODO добавить удаление из бд
+			continue
+		}
+
+		f.Size = info.Size()
+		c.files[f.Hash] = f
+		c.currentSize += f.Size
 	}
 }

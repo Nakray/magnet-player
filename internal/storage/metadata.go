@@ -42,3 +42,24 @@ func (m *MetadataDB) Save(meta *FileMeta) error {
 		return b.Put([]byte(meta.Hash), data)
 	})
 }
+
+func (m *MetadataDB) GetAllFiles() ([]*FileMeta, error) {
+	var files []*FileMeta
+
+	err := m.db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(bucketName))
+		if b == nil {
+			return nil // кеш пустой
+		}
+
+		return b.ForEach(func(k, v []byte) error {
+			var fm FileMeta
+			if err := json.Unmarshal(v, &fm); err != nil {
+				return nil // ошибки просто скипаем
+			}
+			files = append(files, &fm)
+			return nil
+		})
+	})
+	return files, err
+}

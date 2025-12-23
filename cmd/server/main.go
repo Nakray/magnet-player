@@ -26,10 +26,6 @@ func main() {
 		log.Fatalf("create base dir: %v", err)
 	}
 
-	if err := os.MkdirAll(cfg.Storage.BaseDir, 0o755); err != nil {
-		log.Fatalf("create base dir: %v", err)
-	}
-
 	metaDB, err := storage.NewMetadataDB(cfg.Storage.DbPath)
 	if err != nil {
 		log.Fatalf("open metadata db: %v", err)
@@ -37,7 +33,17 @@ func main() {
 	defer metaDB.Close()
 
 	cacheMgr := storage.NewCacheManager(cfg.Storage.MaxSizeGB)
-	// TODO: восстановить состояние из metaDB, обновить cacheMgr.currentSize
+
+	storedFiles, err := metaDB.GetAllFiles()
+	if err != nil {
+		log.Printf("WARNING: failed to load metadata: %v", err)
+	} else {
+		cacheMgr.RestoreState(storedFiles)
+		log.Printf("Cache restored: %d files, total size: %.2f GB",
+			len(storedFiles),
+			float64(cacheMgr.CurrentSize())/(1<<30),
+		)
+	}
 
 	engine, err := torrent.NewEngine(cfg.Storage.BaseDir)
 	if err != nil {
