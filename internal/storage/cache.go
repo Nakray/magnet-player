@@ -3,8 +3,11 @@ package storage
 import (
 	"errors"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/anacrolix/torrent"
 )
 
 type FileMeta struct {
@@ -18,10 +21,11 @@ type CacheManager struct {
 	mu          sync.Mutex
 	maxSize     int64
 	currentSize int64
-	files       map[string]*FileMeta
+	baseDir     string
+	files       map[string]*FileMeta // hash: file
 }
 
-func NewCacheManager(maxSizeGB int64) *CacheManager {
+func NewCacheManager(maxSizeGB int64, baseDir string) *CacheManager {
 	var max int64
 	if maxSizeGB <= 0 {
 		max = -1
@@ -31,11 +35,16 @@ func NewCacheManager(maxSizeGB int64) *CacheManager {
 	return &CacheManager{
 		maxSize: max,
 		files:   make(map[string]*FileMeta),
+		baseDir: baseDir,
 	}
 }
 
 func (c *CacheManager) CurrentSize() int64 {
 	return c.currentSize
+}
+
+func (c *CacheManager) BaseDir() string {
+	return c.baseDir
 }
 
 func (c *CacheManager) ReserveSpace(required int64) error {
@@ -88,14 +97,23 @@ func (c *CacheManager) Touch(hash string) {
 	}
 }
 
-func (c *CacheManager) RestoreState(files []*FileMeta) {
+func (c *CacheManager) Add(file *FileMeta) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
+	c.files[file.Hash] = file
+}
+
+func (c *CacheManager) RestoreState(files []*FileMeta) []*FileMeta {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	var badFiles []*FileMeta
 
 	for _, f := range files {
 		info, err := os.Stat(f.Path)
 		if err != nil {
-			// TODO добавить удаление из бд
+			badFiles = append(badFiles, f)
 			continue
 		}
 
@@ -103,4 +121,9 @@ func (c *CacheManager) RestoreState(files []*FileMeta) {
 		c.files[f.Hash] = f
 		c.currentSize += f.Size
 	}
+	return badFiles
+}
+
+func (c *CacheManager) GetAbsPath(file *torrent.File) string {
+	return filepath.Join(c.baseDir, file.Path())
 }

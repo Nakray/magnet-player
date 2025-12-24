@@ -8,12 +8,13 @@ import (
 )
 
 type MetadataDB struct {
-	db *bolt.DB
+	db         *bolt.DB
+	bucketName []byte
 }
 
-const bucketName = "FileCache"
-
 func NewMetadataDB(path string) (*MetadataDB, error) {
+	bucketName := "FileCache"
+
 	db, err := bolt.Open(path, 0o600, &bolt.Options{Timeout: time.Second})
 	if err != nil {
 		return nil, err
@@ -25,7 +26,7 @@ func NewMetadataDB(path string) (*MetadataDB, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &MetadataDB{db: db}, nil
+	return &MetadataDB{db: db, bucketName: []byte(bucketName)}, nil
 }
 
 func (m *MetadataDB) Close() error {
@@ -34,7 +35,7 @@ func (m *MetadataDB) Close() error {
 
 func (m *MetadataDB) Save(meta *FileMeta) error {
 	return m.db.Update(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(bucketName))
+		b := tx.Bucket(m.bucketName)
 		data, err := json.Marshal(meta)
 		if err != nil {
 			return err
@@ -43,11 +44,18 @@ func (m *MetadataDB) Save(meta *FileMeta) error {
 	})
 }
 
+func (m *MetadataDB) Remove(meta *FileMeta) error {
+	return m.db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket(m.bucketName)
+		return b.Delete([]byte(meta.Hash))
+	})
+}
+
 func (m *MetadataDB) GetAllFiles() ([]*FileMeta, error) {
 	var files []*FileMeta
 
 	err := m.db.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(bucketName))
+		b := tx.Bucket(m.bucketName)
 		if b == nil {
 			return nil // кеш пустой
 		}

@@ -4,23 +4,18 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/Nakray/magnet-player/internal/storage"
-	"github.com/Nakray/magnet-player/internal/torrent"
+	"github.com/Nakray/magnet-player/internal/service"
 )
 
 type Router struct {
-	engine *torrent.Engine
-	cache  *storage.CacheManager
-	metaDB *storage.MetadataDB
+	player *service.PlayerService
 	mux    *http.ServeMux
 }
 
-func NewRouter(engine *torrent.Engine, cache *storage.CacheManager, metaDB *storage.MetadataDB) http.Handler {
+func NewRouter(p *service.PlayerService) http.Handler {
 	r := &Router{
-		engine: engine,
-		cache:  cache,
-		metaDB: metaDB,
 		mux:    http.NewServeMux(),
+		player: p,
 	}
 	r.routes()
 	return r.mux
@@ -53,17 +48,16 @@ func (r *Router) handleAddMagnet(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	t, err := r.engine.AddMagnet(body.Magnet)
+	hash, err := r.player.ProcessMagnet(body.Magnet)
 	if err != nil {
 		http.Error(w, "failed to add magnet", http.StatusInternalServerError)
 		return
 	}
 
-	_ = t // TODO: сохранить в metaDB
-
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]string{
 		"status": "added",
+		"hash":   hash,
 	})
 }
 

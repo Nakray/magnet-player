@@ -8,14 +8,13 @@ type Engine struct {
 	client *torrent.Client
 }
 
-func NewEngine(downloadDir string) (*Engine, error) {
-	cfg := torrent.NewDefaultClientConfig()
-	cfg.DataDir = downloadDir
-	cfg.NoUpload = false
-	cfg.Seed = true
-	cfg.DisableIPv6 = false
+func NewEngine() (*Engine, error) {
+	tCfg := torrent.NewDefaultClientConfig()
+	tCfg.NoUpload = false
+	tCfg.Seed = true
+	tCfg.DisableIPv6 = false
 
-	client, err := torrent.NewClient(cfg)
+	client, err := torrent.NewClient(tCfg)
 	if err != nil {
 		return nil, err
 	}
@@ -28,13 +27,5 @@ func (e *Engine) Close() {
 }
 
 func (e *Engine) AddMagnet(magnet string) (*torrent.Torrent, error) {
-	t, err := e.client.AddMagnet(magnet)
-	if err != nil {
-		return nil, err
-	}
-	// Подождать метаданные, чтобы узнать список файлов
-	<-t.GotInfo()
-	t.DownloadAll()
-	t.SetMaxEstablishedConns(80)
-	return t, nil
+	return e.client.AddMagnet(magnet)
 }
