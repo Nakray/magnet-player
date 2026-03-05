@@ -20,6 +20,13 @@
     "seed_enabled": true,
     "ipv6_disabled": false
   },
+  "jackett": {
+    "enabled": true,
+    "base_url": "http://localhost:9117",
+    "api_key": "YOUR_JACKETT_API_KEY",
+    "timeout_sec": 30,
+    "audio_category_id": "3000"
+  },
   "transcoding": {
     "enabled": false,
     "ffmpeg_path": "/usr/bin/ffmpeg",

@@ -10,6 +10,7 @@ type Config struct {
 	Server       ServerConfig       `json:"server"`
 	Storage      StorageConfig      `json:"storage"`
 	Torrent      TorrentConfig      `json:"torrent"`
+	Jackett      JackettConfig      `json:"jackett"`
 	Transcoding  TranscodingConfig  `json:"transcoding"`
 	Logging      LoggingConfig      `json:"logging"`
 }
@@ -40,6 +41,14 @@ type TorrentConfig struct {
 	UploadEnabled             bool `json:"upload_enabled"`
 	SeedEnabled               bool `json:"seed_enabled"`
 	IPv6Disabled              bool `json:"ipv6_disabled"`
+}
+
+type JackettConfig struct {
+	Enabled          bool   `json:"enabled"`
+	BaseURL          string `json:"base_url"`
+	APIKey           string `json:"api_key"`
+	TimeoutSec       int    `json:"timeout_sec"`
+	AudioCategoryID  string `json:"audio_category_id"`
 }
 
 type TranscodingConfig struct {
@@ -103,6 +112,13 @@ func LoadConfig(path string) (*Config, error) {
 	}
 	if cfg.Torrent.MaxEstablishedConns == 0 {
 		cfg.Torrent.MaxEstablishedConns = 80
+	}
+
+	if cfg.Jackett.TimeoutSec == 0 {
+		cfg.Jackett.TimeoutSec = 30
+	}
+	if cfg.Jackett.AudioCategoryID == "" {
+		cfg.Jackett.AudioCategoryID = "3000" // Audio category in Jackett
 	}
 
 	if cfg.Logging.Level == "" {

@@ -10,6 +10,8 @@ import (
 	"github.com/anacrolix/torrent"
 )
 
+var ErrFileNotFound = errors.New("file not found")
+
 type FileMeta struct {
 	Hash       string    `json:"hash"`
 	Path       string    `json:"path"`
@@ -126,4 +128,42 @@ func (c *CacheManager) RestoreState(files []*FileMeta) []*FileMeta {
 
 func (c *CacheManager) GetAbsPath(file *torrent.File) string {
 	return filepath.Join(c.baseDir, file.Path())
+}
+
+// GetAllFiles возвращает список всех файлов в кеше
+func (c *CacheManager) GetAllFiles() []*FileMeta {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	files := make([]*FileMeta, 0, len(c.files))
+	for _, f := range c.files {
+		files = append(files, f)
+	}
+	return files
+}
+
+// GetFile возвращает файл по хешу
+func (c *CacheManager) GetFile(hash string) *FileMeta {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.files[hash]
+}
+
+// Remove удаляет файл из кеша
+func (c *CacheManager) Remove(hash string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	f, ok := c.files[hash]
+	if !ok {
+		return errors.New("file not found in cache")
+	}
+
+	if err := os.RemoveAll(f.Path); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+
+	c.currentSize -= f.Size
+	delete(c.files, hash)
+	return nil
 }

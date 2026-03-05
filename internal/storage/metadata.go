@@ -51,6 +51,14 @@ func (m *MetadataDB) Remove(meta *FileMeta) error {
 	})
 }
 
+// RemoveByHash удаляет файл по хешу
+func (m *MetadataDB) RemoveByHash(hash string) error {
+	return m.db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket(m.bucketName)
+		return b.Delete([]byte(hash))
+	})
+}
+
 func (m *MetadataDB) GetAllFiles() ([]*FileMeta, error) {
 	var files []*FileMeta
 

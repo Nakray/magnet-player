@@ -1,12 +1,15 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/Nakray/magnet-player/internal/config"
 	"github.com/Nakray/magnet-player/internal/httpserver"
+	"github.com/Nakray/magnet-player/internal/jackett"
 	"github.com/Nakray/magnet-player/internal/service"
 	"github.com/Nakray/magnet-player/internal/storage"
 	"github.com/Nakray/magnet-player/internal/torrent"
@@ -45,7 +48,25 @@ func main() {
 
 	player := service.NewPlayerService(engine, metaDB, cacheMgr)
 
-	router := httpserver.NewRouter(player)
+	var jClient *jackett.Client
+	if cfg.Jackett.Enabled && cfg.Jackett.BaseURL != "" && cfg.Jackett.APIKey != "" {
+		jClient = jackett.NewClient(
+			cfg.Jackett.BaseURL,
+			cfg.Jackett.APIKey,
+			time.Duration(cfg.Jackett.TimeoutSec)*time.Second,
+		)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := jClient.TestConnection(ctx); err != nil {
+			log.Printf("WARNING: jackett connection test failed: %v", err)
+		} else {
+			log.Println("Jackett client initialized successfully")
+		}
+	} else {
+		log.Println("Jackett is disabled or not configured")
+	}
+
+	router := httpserver.NewRouter(player, jClient)
 
 	addr := ":8080"
 	log.Printf("starting server on %s", addr)
