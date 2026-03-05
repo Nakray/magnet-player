@@ -32,7 +32,7 @@ func NewCacheManager(maxSizeGB int64, baseDir string) *CacheManager {
 	if maxSizeGB <= 0 {
 		max = -1
 	} else {
-		max = maxSizeGB * (1 << 30) //10 GB
+		max = maxSizeGB * 1024 * 1024 * 1024 // 10 GB
 	}
 	return &CacheManager{
 		maxSize: max,

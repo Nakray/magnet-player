@@ -272,10 +272,10 @@ func cmdStatus(serverURL string) error {
 
 func formatSize(size int64) string {
 	const (
-		KB = 1 << 10
-		MB = 1 << 20
-		GB = 1 << 30
-		TB = 1 << 40
+		KB = 1024
+		MB = 1024 * 1024
+		GB = 1024 * 1024 * 1024
+		TB = 1024 * 1024 * 1024 * 1024
 	)
 
 	switch {
@@ -312,10 +312,10 @@ func parseSize(s string) (int64, error) {
 	
 	multipliers := map[string]int64{
 		"B":  1,
-		"KB": 1 << 10,
-		"MB": 1 << 20,
-		"GB": 1 << 30,
-		"TB": 1 << 40,
+		"KB": 1024,
+		"MB": 1024 * 1024,
+		"GB": 1024 * 1024 * 1024,
+		"TB": 1024 * 1024 * 1024 * 1024,
 	}
 
 	for suffix, mult := range multipliers {
