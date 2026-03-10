@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Magnet Player</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎵 Magnet Player</h1>
+            <p class="subtitle">Стриминг музыки с торрент-трекеров</p>
+        </header>
+
+        <!-- Поиск -->
+        <section class="search-section">
+            <div class="search-box">
+                <input 
+                    type="text" 
+                    id="searchInput" 
+                    placeholder="Введите исполнителя или название..."
+                    autocomplete="off"
+                >
+                <button id="searchBtn" onclick="performSearch()">
+                    🔍 Поиск
+                </button>
+                <button id="cancelBtn" onclick="cancelSearch()" style="display: none;">
+                    ⏹ Отмена
+                </button>
+                <button id="clearBtn" onclick="clearSearch()" style="display: none;">
+                    ✕ Очистить
+                </button>
+            </div>
+            <div id="searchStatus" class="status"></div>
+        </section>
+
+        <!-- Результаты поиска -->
+        <section class="results-section" id="resultsSection" style="display: none;">
+            <h2>Результаты поиска</h2>
+            <div id="resultsList" class="results-list"></div>
+        </section>
+
+        <!-- Плеер -->
+        <section class="player-section" id="playerSection" style="display: none;">
+            <h2>Сейчас играет</h2>
+            <div class="player-info">
+                <div id="trackTitle" class="track-title">Название трека</div>
+            </div>
+            <audio id="audioPlayer" controls autoplay>
+                <source src="" type="audio/mpeg">
+                Ваш браузер не поддерживает аудио.
+            </audio>
+            <div class="player-controls">
+                <button onclick="closePlayer()" class="btn-close">✕ Закрыть</button>
+            </div>
+        </section>
+
+        <!-- Кэш файлы -->
+        <section class="cache-section">
+            <h2>
+                Файлы в кеше 
+                <button onclick="loadCacheFiles()" class="btn-small">🔄 Обновить</button>
+            </h2>
+            <div id="cacheList" class="cache-list">
+                <div class="loading">Загрузка...</div>
+            </div>
+        </section>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

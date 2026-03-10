@@ -68,7 +68,7 @@ func main() {
 
 	router := httpserver.NewRouter(player, jClient)
 
-	addr := ":8080"
+	addr := cfg.Server.Addr()
 	log.Printf("starting server on %s", addr)
 	if err := http.ListenAndServe(addr, router); err != nil {
 		log.Fatalf("server error: %v", err)

@@ -1,12 +1,14 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -52,6 +54,7 @@ type AddMagnetResponse struct {
 
 func main() {
 	serverURL := flag.String("server", defaultServerURL, "URL сервера magnet-player")
+	interactive := flag.Bool("i", false, "Интерактивный режим (REPL)")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: %s [options] <command> [arguments]\n\n", os.Args[0])
 		fmt.Fprintf(os.Stderr, "Commands:\n")
@@ -60,10 +63,17 @@ func main() {
 		fmt.Fprintf(os.Stderr, "  list                 Список файлов в кеше\n")
 		fmt.Fprintf(os.Stderr, "  remove <hash>        Удалить файл из кеша\n")
 		fmt.Fprintf(os.Stderr, "  status               Статус сервера\n")
+		fmt.Fprintf(os.Stderr, "  help                 Показать справку\n")
+		fmt.Fprintf(os.Stderr, "  quit/exit            Выход из интерактивного режима\n")
 		fmt.Fprintf(os.Stderr, "\nOptions:\n")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
+
+	if *interactive {
+		runInteractive(*serverURL)
+		return
+	}
 
 	if flag.NArg() < 1 {
 		flag.Usage()
@@ -112,21 +122,112 @@ func main() {
 	}
 }
 
+func runInteractive(serverURL string) {
+	fmt.Println("magnet-player CLI - интерактивный режим")
+	fmt.Println("Введите 'help' для списка команд, 'quit' для выхода")
+	fmt.Println()
+
+	scanner := bufio.NewScanner(os.Stdin)
+	for {
+		fmt.Print("> ")
+		if !scanner.Scan() {
+			break
+		}
+
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+
+		if line == "quit" || line == "exit" {
+			fmt.Println("Выход...")
+			break
+		}
+
+		if line == "help" {
+			printInteractiveHelp()
+			continue
+		}
+
+		args := strings.Fields(line)
+		cmd := args[0]
+		cmdArgs := args[1:]
+
+		var err error
+		switch cmd {
+		case "search":
+			if len(cmdArgs) < 1 {
+				fmt.Println("error: query required")
+				continue
+			}
+			err = cmdSearch(serverURL, strings.Join(cmdArgs, " "))
+		case "add":
+			if len(cmdArgs) < 1 {
+				fmt.Println("error: magnet link required")
+				continue
+			}
+			err = cmdAdd(serverURL, cmdArgs[0])
+		case "list":
+			err = cmdList(serverURL)
+		case "remove":
+			if len(cmdArgs) < 1 {
+				fmt.Println("error: hash required")
+				continue
+			}
+			err = cmdRemove(serverURL, cmdArgs[0])
+		case "status":
+			err = cmdStatus(serverURL)
+		default:
+			fmt.Printf("unknown command: %s\n", cmd)
+			continue
+		}
+
+		if err != nil {
+			fmt.Printf("error: %v\n", err)
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		fmt.Fprintf(os.Stderr, "error reading input: %v\n", err)
+	}
+}
+
+func printInteractiveHelp() {
+	fmt.Println("\nДоступные команды:")
+	fmt.Println("  search <query>       Поиск торрентов через Jackett")
+	fmt.Println("  add <magnet>         Добавить magnet-ссылку")
+	fmt.Println("  list                 Список файлов в кеше")
+	fmt.Println("  remove <hash>        Удалить файл из кеша")
+	fmt.Println("  status               Статус сервера")
+	fmt.Println("  help                 Показать эту справку")
+	fmt.Println("  quit/exit            Выход")
+	fmt.Println()
+}
+
 func cmdSearch(serverURL, query string) error {
-	url := fmt.Sprintf("%s/api/search?q=%s", serverURL, query)
-	resp, err := http.Get(url)
+	urlStr := fmt.Sprintf("%s/api/search?q=%s", serverURL, url.QueryEscape(query))
+	resp, err := http.Get(urlStr)
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("read response: %w", err)
+	}
+
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("API error: %s", string(body))
+		// Пытаемся распарсить JSON ошибку
+		var errResp map[string]string
+		if json.Unmarshal(body, &errResp) == nil && errResp["error"] != "" {
+			return fmt.Errorf("API error (%d): %s", resp.StatusCode, errResp["error"])
+		}
+		return fmt.Errorf("API error (%d): %s", resp.StatusCode, string(body))
 	}
 
 	var result SearchResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.NewDecoder(bytes.NewReader(body)).Decode(&result); err != nil {
 		return fmt.Errorf("decode response: %w", err)
 	}
 

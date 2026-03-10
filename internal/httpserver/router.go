@@ -2,8 +2,10 @@ package httpserver
 
 import (
 	"context"
+	"embed"
 	"encoding/json"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -17,9 +19,9 @@ import (
 )
 
 type Router struct {
-	player       *service.PlayerService
+	player        *service.PlayerService
 	jackettClient *jackett.Client
-	mux          *http.ServeMux
+	mux           *http.ServeMux
 }
 
 func NewRouter(p *service.PlayerService, jClient *jackett.Client) http.Handler {
@@ -29,10 +31,25 @@ func NewRouter(p *service.PlayerService, jClient *jackett.Client) http.Handler {
 		jackettClient: jClient,
 	}
 	r.routes()
-	return r.mux
+
+	// Middleware с recover от паник
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		defer func() {
+			if err := recover(); err != nil {
+				log.Printf("PANIC: %v", err)
+				http.Error(w, "internal server error", http.StatusInternalServerError)
+			}
+		}()
+		r.mux.ServeHTTP(w, req)
+	})
 }
 
 func (r *Router) routes() {
+	// Веб-интерфейс
+	r.mux.HandleFunc("/", r.handleIndex)
+	r.mux.HandleFunc("/static/", r.handleStatic)
+
+	// API
 	r.mux.HandleFunc("/health", r.handleHealth)
 	r.mux.HandleFunc("/api/add-magnet", r.handleAddMagnet)
 	r.mux.HandleFunc("/api/search", r.handleSearch)
@@ -44,6 +61,67 @@ func (r *Router) routes() {
 func (r *Router) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("OK"))
+}
+
+func (r *Router) handleIndex(w http.ResponseWriter, req *http.Request) {
+	if req.URL.Path != "/" {
+		http.NotFound(w, req)
+		return
+	}
+
+	// Читаем index.html из embedded файлов
+	data, err := staticFiles.ReadFile("web/static/index.html")
+	if err != nil {
+		http.Error(w, "Page not found", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = w.Write(data)
+}
+
+func (r *Router) handleStatic(w http.ResponseWriter, req *http.Request) {
+	// Извлекаем путь к файлу
+	filePath := strings.TrimPrefix(req.URL.Path, "/static/")
+
+	// Читаем файл из embedded
+	data, err := staticFiles.ReadFile("web/static/" + filePath)
+	if err != nil {
+		http.NotFound(w, req)
+		return
+	}
+
+	// Определяем Content-Type
+	contentType := getContentTypeForFile(filePath)
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Cache-Control", "public, max-age=3600")
+	_, _ = w.Write(data)
+}
+
+func getContentTypeForFile(path string) string {
+	ext := strings.ToLower(filepath.Ext(path))
+	switch ext {
+	case ".html":
+		return "text/html; charset=utf-8"
+	case ".css":
+		return "text/css; charset=utf-8"
+	case ".js":
+		return "application/javascript; charset=utf-8"
+	case ".json":
+		return "application/json; charset=utf-8"
+	case ".png":
+		return "image/png"
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".gif":
+		return "image/gif"
+	case ".svg":
+		return "image/svg+xml"
+	case ".ico":
+		return "image/x-icon"
+	default:
+		return "application/octet-stream"
+	}
 }
 
 type addMagnetRequest struct {
@@ -200,6 +278,11 @@ func (r *Router) handleSearch(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	if r.jackettClient == nil {
+		http.Error(w, `{"error": "jackett client not configured"}`, http.StatusServiceUnavailable)
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(req.Context(), 30*time.Second)
 	defer cancel()
 
@@ -207,15 +290,24 @@ func (r *Router) handleSearch(w http.ResponseWriter, req *http.Request) {
 		Query: query,
 	})
 	if err != nil {
-		http.Error(w, `{"error": "`+err.Error()+`"}`, http.StatusInternalServerError)
+		log.Printf("Search error: %v", err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		if err := json.NewEncoder(w).Encode(map[string]string{
+			"error": err.Error(),
+		}); err != nil {
+			log.Printf("Failed to encode error response: %v", err)
+		}
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(searchResponse{
+	if err := json.NewEncoder(w).Encode(searchResponse{
 		Results: results,
 		Count:   len(results),
-	})
+	}); err != nil {
+		log.Printf("Failed to encode search response: %v", err)
+	}
 }
 
 type filesResponse struct {
@@ -262,3 +354,6 @@ func (r *Router) handleFileDelete(w http.ResponseWriter, req *http.Request) {
 		"hash":   hash,
 	})
 }
+
+//go:embed web/static/*
+var staticFiles embed.FS

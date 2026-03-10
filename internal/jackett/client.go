@@ -12,15 +12,15 @@ import (
 
 // SearchResult — результат поиска из Jackett API
 type SearchResult struct {
-	Title       string  `json:"title"`
-	Size        int64   `json:"size"`
-	Seeders     int     `json:"seeders"`
-	Peers       int     `json:"peers"`
-	Grabs       int     `json:"grabs"`
-	Category    string  `json:"category"`
-	PublishDate string  `json:"publish_date"`
-	MagnetLink  string  `json:"magnet_link"`
-	Indexer     string  `json:"indexer"`
+	Title       string `json:"title"`
+	Size        int64  `json:"size"`
+	Seeders     int    `json:"seeders"`
+	Peers       int    `json:"peers"`
+	Grabs       int    `json:"grabs"`
+	Category    string `json:"category"`
+	PublishDate string `json:"publish_date"`
+	MagnetLink  string `json:"magnet_link"`
+	Indexer     string `json:"indexer"`
 }
 
 // SearchQuery — параметры поиска
@@ -52,12 +52,11 @@ func NewClient(baseURL, apiKey string, timeout time.Duration) *Client {
 func (c *Client) Search(ctx context.Context, q *SearchQuery) ([]SearchResult, error) {
 	params := url.Values{}
 	params.Set("apikey", c.apiKey)
-	params.Set("q", q.Query)
-	params.Set("t", "search")
-	params.Set("o", "json")
+	params.Set("Query", q.Query)
+	params.Set("Tracker[]", "rutracker")
 
 	if q.Category != "" {
-		params.Set("cat", q.Category)
+		params.Add("Category[]", "1772715718700")
 	}
 
 	reqURL := fmt.Sprintf("%s/api/v2.0/indexers/all/results?%s", c.baseURL, params.Encode())
@@ -69,6 +68,12 @@ func (c *Client) Search(ctx context.Context, q *SearchQuery) ([]SearchResult, er
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return nil, fmt.Errorf("jackett search timeout")
+		}
+		if ctx.Err() == context.Canceled {
+			return nil, fmt.Errorf("jackett search canceled")
+		}
 		return nil, fmt.Errorf("execute request: %w", err)
 	}
 	defer resp.Body.Close()
@@ -80,23 +85,44 @@ func (c *Client) Search(ctx context.Context, q *SearchQuery) ([]SearchResult, er
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return nil, fmt.Errorf("jackett search timeout while reading response")
+		}
 		return nil, fmt.Errorf("read response body: %w", err)
 	}
 
+	// Пробуем парсить как массив
 	var rawResults []struct {
-		Title       string `json:"Title"`
-		Size        int64  `json:"Size"`
-		Seeders     int    `json:"Seeders"`
-		Peers       int    `json:"Peers"`
-		Grabs       int    `json:"Grabs"`
-		Category    string `json:"Category"`
-		PublishDate string `json:"PublishDate"`
-		MagnetURI   string `json:"MagnetUri"`
-		Indexer     string `json:"Indexer"`
+		Title       string      `json:"Title"`
+		Size        int64       `json:"Size"`
+		Seeders     int         `json:"Seeders"`
+		Peers       int         `json:"Peers"`
+		Grabs       int         `json:"Grabs"`
+		Category    interface{} `json:"Category"`
+		PublishDate string      `json:"PublishDate"`
+		MagnetURI   string      `json:"MagnetUri"`
+		Indexer     string      `json:"Indexer"`
 	}
 
+	// Если не получилось — пробуем как объект с полем Results
 	if err := json.Unmarshal(body, &rawResults); err != nil {
-		return nil, fmt.Errorf("unmarshal response: %w", err)
+		var wrapper struct {
+			Results []struct {
+				Title       string      `json:"Title"`
+				Size        int64       `json:"Size"`
+				Seeders     int         `json:"Seeders"`
+				Peers       int         `json:"Peers"`
+				Grabs       int         `json:"Grabs"`
+				Category    interface{} `json:"Category"`
+				PublishDate string      `json:"PublishDate"`
+				MagnetURI   string      `json:"MagnetUri"`
+				Indexer     string      `json:"Indexer"`
+			} `json:"Results"`
+		}
+		if err2 := json.Unmarshal(body, &wrapper); err2 != nil {
+			return nil, fmt.Errorf("unmarshal response: %v (original: %v)", err2, err)
+		}
+		rawResults = wrapper.Results
 	}
 
 	results := make([]SearchResult, 0, len(rawResults))
@@ -106,13 +132,32 @@ func (c *Client) Search(ctx context.Context, q *SearchQuery) ([]SearchResult, er
 			continue
 		}
 
+		// Конвертируем Category в строку
+		categoryStr := ""
+		switch v := r.Category.(type) {
+		case string:
+			categoryStr = v
+		case []interface{}:
+			// Массив чисел [3000, 101756]
+			for i, c := range v {
+				if i > 0 {
+					categoryStr += ", "
+				}
+				if num, ok := c.(float64); ok {
+					categoryStr += fmt.Sprintf("%d", int64(num))
+				}
+			}
+		case float64:
+			categoryStr = fmt.Sprintf("%d", int64(v))
+		}
+
 		results = append(results, SearchResult{
 			Title:       r.Title,
 			Size:        r.Size,
 			Seeders:     r.Seeders,
 			Peers:       r.Peers,
 			Grabs:       r.Grabs,
-			Category:    r.Category,
+			Category:    categoryStr,
 			PublishDate: r.PublishDate,
 			MagnetLink:  r.MagnetURI,
 			Indexer:     r.Indexer,
