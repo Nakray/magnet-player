@@ -56,6 +56,7 @@ func (r *Router) routes() {
 	r.mux.HandleFunc("/api/stream", r.handleStream)
 	r.mux.HandleFunc("/api/files", r.handleFiles)
 	r.mux.HandleFunc("/api/files/", r.handleFileDelete)
+	r.mux.HandleFunc("/api/progress", r.handleProgress)
 }
 
 func (r *Router) handleHealth(w http.ResponseWriter, _ *http.Request) {
@@ -352,6 +353,52 @@ func (r *Router) handleFiles(w http.ResponseWriter, req *http.Request) {
 	_ = json.NewEncoder(w).Encode(filesResponse{
 		Files: files,
 		Count: len(files),
+	})
+}
+
+type progressResponse struct {
+	Hash       string  `json:"hash"`
+	Downloaded int64   `json:"downloaded"`
+	Size       int64   `json:"size"`
+	Progress   float64 `json:"progress"`
+}
+
+func (r *Router) handleProgress(w http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodGet {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"error": "method not allowed",
+		})
+		return
+	}
+
+	hash := req.URL.Query().Get("hash")
+	if hash == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"error": "hash parameter is required",
+		})
+		return
+	}
+
+	meta := r.player.GetFileMeta(hash)
+	if meta == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"error": "file not found",
+		})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(progressResponse{
+		Hash:       meta.Hash,
+		Downloaded: meta.Downloaded,
+		Size:       meta.Size,
+		Progress:   meta.Progress,
 	})
 }
 

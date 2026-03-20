@@ -16,6 +16,8 @@ type FileMeta struct {
 	Hash       string    `json:"hash"`
 	Path       string    `json:"path"`
 	Size       int64     `json:"size"`
+	Downloaded int64     `json:"downloaded"` // Сколько скачано байт
+	Progress   float64   `json:"progress"`   // Процент загрузки (0-100)
 	LastAccess time.Time `json:"last_access"`
 }
 
@@ -127,7 +129,9 @@ func (c *CacheManager) RestoreState(files []*FileMeta) []*FileMeta {
 }
 
 func (c *CacheManager) GetAbsPath(file *torrent.File) string {
-	return filepath.Join(c.baseDir, file.Path())
+	// Используем только имя файла, чтобы избежать проблем с путями
+	fileName := filepath.Base(file.Path())
+	return filepath.Join(c.baseDir, fileName)
 }
 
 // GetAllFiles возвращает список всех файлов в кеше
@@ -166,4 +170,20 @@ func (c *CacheManager) Remove(hash string) error {
 	c.currentSize -= f.Size
 	delete(c.files, hash)
 	return nil
+}
+
+// UpdateProgress обновляет прогресс загрузки файла
+func (c *CacheManager) UpdateProgress(hash string, downloaded, total int64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	f, ok := c.files[hash]
+	if !ok {
+		return
+	}
+
+	f.Downloaded = downloaded
+	if total > 0 {
+		f.Progress = float64(downloaded) / float64(total) * 100
+	}
 }

@@ -127,11 +127,8 @@ async function playTorrent(magnetLink) {
 
         if (response.ok) {
             showStatus(`Торрент добавлен: ${data.hash}`, 'success');
-            // Ждём немного и обновляем кэш
-            setTimeout(() => {
-                loadCacheFiles();
-                showStatus('Файл добавлен в очередь загрузки', 'success');
-            }, 2000);
+            // Показываем прогрессбар загрузки
+            showDownloadProgress(data.hash);
         } else {
             showStatus(`Ошибка: ${data.error || 'Не удалось добавить торрент'}`, 'error');
         }
@@ -139,6 +136,62 @@ async function playTorrent(magnetLink) {
         console.error('playTorrent: error =', err);
         showStatus(`Ошибка: ${err.message}`, 'error');
     }
+}
+
+// Отображение прогресса загрузки
+let progressInterval = null;
+function showDownloadProgress(hash) {
+    const statusEl = document.getElementById('searchStatus');
+    statusEl.className = 'status success';
+    statusEl.textContent = 'Загрузка... 0%';
+
+    // Создаём прогрессбар
+    let progressBar = document.getElementById('downloadProgress');
+    if (!progressBar) {
+        progressBar = document.createElement('div');
+        progressBar.id = 'downloadProgress';
+        progressBar.style.cssText = 'width: 100%; height: 4px; background: #e0e0e0; margin-top: 8px; border-radius: 2px; overflow: hidden;';
+        progressBar.innerHTML = '<div style="width: 0%; height: 100%; background: #4caf50; transition: width 0.3s;"></div>';
+        statusEl.parentNode.insertBefore(progressBar, statusEl.nextSibling);
+    }
+
+    const progressFill = progressBar.firstChild;
+
+    // Опрос прогресса
+    if (progressInterval) {
+        clearInterval(progressInterval);
+    }
+
+    progressInterval = setInterval(async () => {
+        try {
+            const response = await fetch(`/api/progress?hash=${encodeURIComponent(hash)}`);
+            const data = await response.json();
+
+            if (response.ok && data.progress !== undefined) {
+                const progress = Math.min(100, data.progress).toFixed(1);
+                statusEl.textContent = `Загрузка... ${progress}%`;
+                progressFill.style.width = `${progress}%`;
+
+                if (progress >= 100) {
+                    clearInterval(progressInterval);
+                    statusEl.textContent = 'Загрузка завершена!';
+                    setTimeout(() => {
+                        statusEl.textContent = '';
+                        statusEl.className = 'status';
+                        if (progressBar && progressBar.parentNode) {
+                            progressBar.parentNode.removeChild(progressBar);
+                        }
+                    }, 2000);
+                    loadCacheFiles();
+                }
+            } else if (!response.ok) {
+                // Файл ещё не появился в кэше, продолжаем опрос
+                console.log('Progress not available yet');
+            }
+        } catch (err) {
+            console.error('Progress polling error:', err);
+        }
+    }, 1000);
 }
 
 // Загрузка файлов кэша

@@ -59,14 +59,19 @@ func (s *PlayerService) processDownload(t *torrent.Torrent) {
 		return
 	}
 
+	hash := t.InfoHash().String()
+
 	// Включаем скачивание в движке
 	t.DownloadAll()
 
+	// Сохраняем метаданные файлов
 	for _, f := range t.Files() {
 		meta := &storage.FileMeta{
-			Hash:       t.InfoHash().String(),
+			Hash:       hash,
 			Path:       s.cache.GetAbsPath(f),
 			Size:       f.Length(),
+			Downloaded: 0,
+			Progress:   0,
 			LastAccess: time.Now(),
 		}
 
@@ -76,7 +81,41 @@ func (s *PlayerService) processDownload(t *torrent.Torrent) {
 		s.cache.Add(meta)
 	}
 
-	log.Printf("Service: Torrent %s processed", t.Name())
+	// Запускаем фоновый мониторинг прогресса
+	go func() {
+		// Ждём получения информации о торренте
+		select {
+		case <-t.GotInfo():
+		case <-time.After(60 * time.Second):
+			log.Printf("Service: timeout waiting for torrent info")
+			return
+		}
+
+		ticker := time.NewTicker(500 * time.Millisecond)
+		defer ticker.Stop()
+
+		for range ticker.C {
+			totalSize := int64(0)
+			downloaded := int64(0)
+
+			for _, f := range t.Files() {
+				totalSize += f.Length()
+				downloaded += int64(f.BytesCompleted())
+			}
+
+			if totalSize > 0 {
+				s.cache.UpdateProgress(hash, downloaded, totalSize)
+			}
+
+			// Если загрузка завершена, выходим
+			if downloaded >= totalSize {
+				log.Printf("Service: Torrent %s download completed", t.Name())
+				return
+			}
+		}
+	}()
+
+	log.Printf("Service: Torrent %s processing started", t.Name())
 }
 
 // GetFileReader возвращает reader для файла по хешу
