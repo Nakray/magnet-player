@@ -95,10 +95,10 @@ function displayResults(results) {
                 </div>
             </div>
             <div class="result-actions">
-                <button class="btn-play" onclick="playTorrent('${escapeHtml(item.magnet_link)}')">
+                <button class="btn-play" onclick="playTorrent('${item.magnet_link}')">
                     ▶ Play
                 </button>
-                <a class="btn-download" href="${escapeHtml(item.magnet_link)}" title="Открыть в торрент-клиенте">
+                <a class="btn-download" href="${item.magnet_link}" title="Открыть в торрент-клиенте">
                     ⬇ Magnet
                 </a>
             </div>
@@ -110,17 +110,21 @@ function displayResults(results) {
 
 // Воспроизведение торрента
 async function playTorrent(magnetLink) {
+    console.log('playTorrent: magnetLink =', magnetLink);
     showStatus('Добавление торрента...', 'success');
-    
+
     try {
+        console.log('playTorrent: sending request to /api/add-magnet');
         const response = await fetch('/api/add-magnet', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ magnet: magnetLink })
         });
-        
+
+        console.log('playTorrent: response status =', response.status);
         const data = await response.json();
-        
+        console.log('playTorrent: response data =', data);
+
         if (response.ok) {
             showStatus(`Торрент добавлен: ${data.hash}`, 'success');
             // Ждём немного и обновляем кэш
@@ -132,6 +136,7 @@ async function playTorrent(magnetLink) {
             showStatus(`Ошибка: ${data.error || 'Не удалось добавить торрент'}`, 'error');
         }
     } catch (err) {
+        console.error('playTorrent: error =', err);
         showStatus(`Ошибка: ${err.message}`, 'error');
     }
 }

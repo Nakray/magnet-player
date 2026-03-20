@@ -130,21 +130,39 @@ type addMagnetRequest struct {
 
 func (r *Router) handleAddMagnet(w http.ResponseWriter, req *http.Request) {
 	if req.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"error": "method not allowed",
+		})
 		return
 	}
 
 	var body addMagnetRequest
 	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
-		http.Error(w, "bad request", http.StatusBadRequest)
+		log.Printf("handleAddMagnet: decode error: %v", err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"error": "bad request",
+		})
 		return
 	}
 
+	log.Printf("handleAddMagnet: received magnet: %q", body.Magnet)
+
 	hash, err := r.player.ProcessMagnet(body.Magnet)
 	if err != nil {
-		http.Error(w, "failed to add magnet", http.StatusInternalServerError)
+		log.Printf("handleAddMagnet: ProcessMagnet error: %v", err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"error": err.Error(),
+		})
 		return
 	}
+
+	log.Printf("handleAddMagnet: success, hash: %s", hash)
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]string{
@@ -317,11 +335,18 @@ type filesResponse struct {
 
 func (r *Router) handleFiles(w http.ResponseWriter, req *http.Request) {
 	if req.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"error": "method not allowed",
+		})
 		return
 	}
 
 	files := r.player.GetAllFiles()
+	if files == nil {
+		files = []*storage.FileMeta{}
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(filesResponse{

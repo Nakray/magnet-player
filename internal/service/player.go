@@ -27,14 +27,25 @@ func NewPlayerService(eng *e.Engine, db *storage.MetadataDB, cache *storage.Cach
 }
 
 func (s *PlayerService) ProcessMagnet(magnetLink string) (string, error) {
-	t, err := s.engine.AddMagnet(magnetLink)
+	log.Printf("ProcessMagnet: processing link: %q", magnetLink)
+	
+	// Проверяем, является ли ссылка magnet-ссылкой или URL на .torrent файл
+	if len(magnetLink) > 0 && magnetLink[0] == 'm' {
+		// Это magnet-ссылка
+		t, err := s.engine.AddMagnet(magnetLink)
+		if err != nil {
+			return "", err
+		}
+		go s.processDownload(t)
+		return t.InfoHash().String(), nil
+	}
+	
+	// Это URL на .torrent файл
+	t, err := s.engine.AddTorrentFromURL(magnetLink)
 	if err != nil {
 		return "", err
 	}
-
-	// запускаем фоновую закгрузку
 	go s.processDownload(t)
-
 	return t.InfoHash().String(), nil
 }
 

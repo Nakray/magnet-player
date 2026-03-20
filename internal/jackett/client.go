@@ -20,6 +20,7 @@ type SearchResult struct {
 	Category    string `json:"category"`
 	PublishDate string `json:"publish_date"`
 	MagnetLink  string `json:"magnet_link"`
+	TorrentLink string `json:"torrent_link"` // Ссылка на .torrent файл через Jackett
 	Indexer     string `json:"indexer"`
 }
 
@@ -91,6 +92,8 @@ func (c *Client) Search(ctx context.Context, q *SearchQuery) ([]SearchResult, er
 		return nil, fmt.Errorf("read response body: %w", err)
 	}
 
+	fmt.Printf("JACKETT RAW RESPONSE: %s\n", string(body))
+
 	// Пробуем парсить как массив
 	var rawResults []struct {
 		Title       string      `json:"Title"`
@@ -101,6 +104,7 @@ func (c *Client) Search(ctx context.Context, q *SearchQuery) ([]SearchResult, er
 		Category    interface{} `json:"Category"`
 		PublishDate string      `json:"PublishDate"`
 		MagnetURI   string      `json:"MagnetUri"`
+		Link        string      `json:"Link"`
 		Indexer     string      `json:"Indexer"`
 	}
 
@@ -116,6 +120,7 @@ func (c *Client) Search(ctx context.Context, q *SearchQuery) ([]SearchResult, er
 				Category    interface{} `json:"Category"`
 				PublishDate string      `json:"PublishDate"`
 				MagnetURI   string      `json:"MagnetUri"`
+				Link        string      `json:"Link"`
 				Indexer     string      `json:"Indexer"`
 			} `json:"Results"`
 		}
@@ -151,6 +156,17 @@ func (c *Client) Search(ctx context.Context, q *SearchQuery) ([]SearchResult, er
 			categoryStr = fmt.Sprintf("%d", int64(v))
 		}
 
+		fmt.Printf("PARSED RESULT: Title=%q, MagnetUri=%q, Link=%q, Indexer=%s\n", r.Title, r.MagnetURI, r.Link, r.Indexer)
+
+		// Если MagnetUri пуст, используем Link для создания magnet-ссылки
+		magnetLink := r.MagnetURI
+		torrentLink := r.Link
+		if magnetLink == "" && torrentLink != "" {
+			// Для трекеров без magnet-ссылок используем torrent link
+			// Jackett предоставляет ссылку на скачивание .torrent файла
+			magnetLink = torrentLink
+		}
+
 		results = append(results, SearchResult{
 			Title:       r.Title,
 			Size:        r.Size,
@@ -159,10 +175,13 @@ func (c *Client) Search(ctx context.Context, q *SearchQuery) ([]SearchResult, er
 			Grabs:       r.Grabs,
 			Category:    categoryStr,
 			PublishDate: r.PublishDate,
-			MagnetLink:  r.MagnetURI,
+			MagnetLink:  magnetLink,
+			TorrentLink: torrentLink,
 			Indexer:     r.Indexer,
 		})
 	}
+
+	fmt.Printf("SEARCH RETURNED %d RESULTS\n", len(results))
 
 	return results, nil
 }
